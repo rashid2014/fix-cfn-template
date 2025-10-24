@@ -1,0 +1,55 @@
+name: Deploy CloudFormation Stack
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'CloudFormation action to perform (create/update or delete)'
+        required: true
+        default: 'create-update'
+        type: choice
+        options:
+          - create-update
+          - delete
+      stack-name:
+        description: 'Name of the CloudFormation stack'
+        required: true
+        default: 'example-stack'
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy-cfn:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials from IAM Role
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Deploy CloudFormation Stack
+        run: |
+          STACK_NAME=${{ github.event.inputs.stack-name }}
+          ACTION=${{ github.event.inputs.action }}
+
+          if [ "$ACTION" == "create-update" ]; then
+            echo "Creating or updating stack: $STACK_NAME"
+            aws cloudformation deploy \
+              --stack-name $STACK_NAME \
+              --template-file fix-template.yaml \
+              --capabilities CAPABILITY_NAMED_IAM
+          elif [ "$ACTION" == "delete" ]; then
+            echo "Deleting stack: $STACK_NAME"
+            aws cloudformation delete-stack --stack-name $STACK_NAME
+            aws cloudformation wait stack-delete-complete --stack-name $STACK_NAME
+          else
+            echo "Invalid action: $ACTION"
+            exit 1
+          fi
